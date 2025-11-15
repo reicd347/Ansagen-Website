@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Haltestellen-Generator — MVG Ansagen Studio</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body class="page">
+  <header class="topbar">
+    <div class="brand">MVG Ansagen Studio</div>
+    <nav class="nav">
+      <a href="index.html">Home</a>
+      <a href="ansagen.html">Ansage erstellen</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <h1>Haltestellen-Generator</h1>
+
+    <section class="card">
+      <label>Linie eingeben (z. B. U1, 62): <input id="lineInput"></label>
+      <div class="row">
+        <button id="loadLineBtn">Linie laden</button>
+        <button id="addAltRouteBtn">Alternative Route hinzufügen</button>
+      </div>
+
+      <div id="routesArea"></div>
+
+      <h2>Aktionen</h2>
+      <button id="autoGenerateBtn">Automatisch alle Haltestellenansagen generieren</button>
+      <button id="downloadAllBtn">Alle Ansagen als eine Datei herunterladen</button>
+
+      <h3>Vorschau / Einzelne Dateien</h3>
+      <div id="generatorOutput"></div>
+    </section>
+
+  </main>
+
+  <script src="assets/common.js"></script>
+  <script>
+  // --- Page logic for generator.html ---
+  const loadLineBtn = document.getElementById('loadLineBtn');
+  const lineInput = document.getElementById('lineInput');
+  const routesArea = document.getElementById('routesArea');
+  const addAltRouteBtn = document.getElementById('addAltRouteBtn');
+  const autoGenerateBtn = document.getElementById('autoGenerateBtn');
+  const generatorOutput = document.getElementById('generatorOutput');
+  const downloadAllBtn = document.getElementById('downloadAllBtn');
+
+  let currentRoutes = []; // array of arrays of station objects
+
+  loadLineBtn.addEventListener('click', ()=>{
+    const line = lineInput.value.trim();
+    if(!line){ alert('Bitte Linie eingeben.'); return; }
+    // find matching routes in SAMPLE_DATA.lines
+    const found = SAMPLE_DATA.lines[line.toUpperCase()];
+    if(!found){ alert('Linie nicht gefunden in der Demo-Datenbank. Lege sie als eigene Route an.');
+      currentRoutes = [[{id:'custom1', name:`${line} - Haltestelle 1`, audio:'placeholder.mp3'},{id:'custom2', name:`${line} - Haltestelle 2`, audio:'placeholder.mp3'}]];
+    } else {
+      currentRoutes = found.routes.map(r=> r.map(id => SAMPLE_DATA.findStationById(id)));
+    }
+    renderRoutes();
+  });
+
+  addAltRouteBtn.addEventListener('click', ()=>{
+    // create a shallow copy of first route or an empty one
+    const newRoute = currentRoutes.length? structuredClone(currentRoutes[0]) : [];
+    currentRoutes.push(newRoute);
+    renderRoutes();
+  });
+
+  function renderRoutes(){
+    routesArea.innerHTML = '';
+    currentRoutes.forEach((route, idx)=>{
+      const div = document.createElement('div');
+      div.className = 'route-card';
+      div.innerHTML = `<h4>Route ${idx+1} (Richtung)</h4><ol>${route.map(s=>`<li>${escapeHtml(s? s.name : '—')}</li>`).join('')}</ol>`;
+      routesArea.appendChild(div);
+    });
+  }
+
+  autoGenerateBtn.addEventListener('click', async ()=>{
+    generatorOutput.innerHTML = '';
+    if(!currentRoutes.length){ alert('Keine Route geladen.'); return; }
+    for(const [ridx, route] of currentRoutes.entries()){
+      const container = document.createElement('div');
+      container.className = 'card';
+      container.innerHTML = `<h3>Route ${ridx+1}</h3>`;
+      for(const station of route){
+        const row = document.createElement('div');
+        row.className = 'gen-row';
+        row.innerHTML = `<span>${escapeHtml(station.name)}</span> <button class="play">Vorschau</button> <button class="dl">Herunterladen</button>`;
+        container.appendChild(row);
+        const playBtn = row.querySelector('.play');
+        const dlBtn = row.querySelector('.dl');
+        playBtn.addEventListener('click', async ()=>{
+          const files = [`assets/audio/gongs/station_gong.mp3`, 'assets/audio/phrases/naechster_halt.mp3', `assets/audio/stations/${station.audio}`];
+          const blob = await concatAudioFilesToWavBlob(files);
+          playBlob(blob);
+        });
+        dlBtn.addEventListener('click', async ()=>{
+          const files = [`assets/audio/gongs/station_gong.mp3`, 'assets/audio/phrases/naechster_halt.mp3', `assets/audio/stations/${station.audio}`];
+          const blob = await concatAudioFilesToWavBlob(files);
+          triggerDownload(blob, `Ansage_${station.name.replace(/\s+/g,'_')}.wav`);
+        });
+      }
+      generatorOutput.appendChild(container);
+    }
+  });
+
+  // download all concatenated
+  downloadAllBtn.addEventListener('click', async ()=>{
+    if(!currentRoutes.length){ alert('Keine Route geladen.'); return; }
+    // simple concatenation: for each route, for each stop, build file list and append
+    let allFiles = [];
+    for(const route of currentRoutes){
+      for(const station of route){
+        allFiles.push(`assets/audio/gongs/station_gong.mp3`);
+        allFiles.push('assets/audio/phrases/naechster_halt.mp3');
+        allFiles.push(`assets/audio/stations/${station.audio}`);
+      }
+    }
+    const blob = await concatAudioFilesToWavBlob(allFiles);
+    triggerDownload(blob, `Ansagen_${lineInput.value.replace(/\s+/g,'_')||'Line'}.wav`);
+  });
+
+  function playBlob(blob){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('audio');
+    a.src = url; a.controls = true; a.autoplay = true;
+    document.body.appendChild(a);
+    setTimeout(()=> URL.revokeObjectURL(url), 60000);
+  }
+
+  </script>
+</body>
+</html>

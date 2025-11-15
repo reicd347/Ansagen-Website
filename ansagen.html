@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Ansage erstellen — MVG Ansagen Studio</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body class="page">
+  <header class="topbar">
+    <div class="brand">MVG Ansagen Studio</div>
+    <nav class="nav">
+      <a href="index.html">Home</a>
+      <a href="generator.html">Haltestellen-Generator</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <h1>Ansage zusammenstellen</h1>
+
+    <div class="grid">
+      <section class="card">
+        <h2>1. Gong wählen</h2>
+        <div class="radio-row">
+          <label><input type="radio" name="gongType" value="station_gong" checked> Haltestellen-Gong</label>
+          <label><input type="radio" name="gongType" value="endstation_gong"> Endstations-Gong</label>
+        </div>
+
+        <h2>2. Haltestelle wählen</h2>
+        <input id="stationSearch" placeholder="Haltestelle suchen..." aria-label="Haltestelle suchen">
+        <ul id="stationList" class="list"></ul>
+
+        <h2>3. Umstiegshinweis</h2>
+        <select id="transferSelect">
+          <option value="">— Kein Umstieg —</option>
+          <option>U1</option>
+          <option>U2</option>
+          <option>U3</option>
+          <option>U4</option>
+          <option>U5</option>
+          <option>U6</option>
+          <option>U7</option>
+          <option>U8</option>
+          <option>S-Bahn</option>
+        </select>
+
+        <div class="actions">
+          <button id="previewBtn">Vorschau abspielen</button>
+          <button id="downloadBtn">Herunterladen (WAV)</button>
+        </div>
+
+      </section>
+
+      <section class="card">
+        <h2>Ausgewählte Elemente</h2>
+        <div id="selectedInfo" class="info">Keine Haltestelle gewählt.</div>
+
+        <h2>Transport-Symbole</h2>
+        <div id="transportIcons" class="icons">—</div>
+
+        <h2>Audio Steuerung</h2>
+        <audio id="previewAudio" controls></audio>
+      </section>
+    </div>
+
+    <footer class="foot">Hinweis: Alle Audio-Dateien müssen lokal unter <code>assets/audio/</code> liegen.</footer>
+  </main>
+
+  <script src="assets/common.js"></script>
+  <script>
+  // --- Page logic for ansagen.html ---
+  const stations = SAMPLE_DATA.stations; // defined in common.js
+
+  const stationSearch = document.getElementById('stationSearch');
+  const stationList = document.getElementById('stationList');
+  const transferSelect = document.getElementById('transferSelect');
+  const selectedInfo = document.getElementById('selectedInfo');
+  const previewBtn = document.getElementById('previewBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const transportIcons = document.getElementById('transportIcons');
+  const previewAudio = document.getElementById('previewAudio');
+
+  let chosenStation = null;
+
+  function renderStationList(filter = ''){
+    stationList.innerHTML = '';
+    const list = stations.filter(s => s.name.toLowerCase().includes(filter.toLowerCase()));
+    list.forEach(s =>{
+      const li = document.createElement('li');
+      li.className = 'list-item';
+      li.innerHTML = `<button class="link-btn">${transportIconsHtml(s.types)} ${escapeHtml(s.name)}</button>`;
+      li.querySelector('button').addEventListener('click', ()=> selectStation(s));
+      stationList.appendChild(li);
+    });
+  }
+
+  function transportIconsHtml(types){
+    if(!types || types.length===0) return '';
+    return types.map(t=>`<span class="icon" title="${t}">${ICONS[t]||'?'}</span>`).join(' ');
+  }
+
+  function selectStation(s){
+    chosenStation = s;
+    selectedInfo.innerHTML = `<strong>${escapeHtml(s.name)}</strong> — ID: ${s.id}`;
+    transportIcons.innerHTML = transportIconsHtml(s.types);
+  }
+
+  stationSearch.addEventListener('input', ()=> renderStationList(stationSearch.value));
+  renderStationList();
+
+  previewBtn.addEventListener('click', async ()=>{
+    if(!chosenStation){ alert('Bitte zuerst eine Haltestelle auswählen.'); return; }
+    const gong = document.querySelector('input[name=gongType]:checked').value;
+    const transfer = transferSelect.value;
+    previewBtn.disabled = true;
+    try{
+      const files = assembleFilesForStation(gong, chosenStation, transfer);
+      const blob = await concatAudioFilesToWavBlob(files);
+      previewAudio.src = URL.createObjectURL(blob);
+      previewAudio.play();
+    }catch(e){ console.error(e); alert('Fehler beim Erzeugen der Vorschau: '+e.message); }
+    previewBtn.disabled = false;
+  });
+
+  downloadBtn.addEventListener('click', async ()=>{
+    if(!chosenStation){ alert('Bitte zuerst eine Haltestelle auswählen.'); return; }
+    const gong = document.querySelector('input[name=gongType]:checked').value;
+    const transfer = transferSelect.value;
+    downloadBtn.disabled = true;
+    try{
+      const files = assembleFilesForStation(gong, chosenStation, transfer);
+      const blob = await concatAudioFilesToWavBlob(files);
+      const name = `Ansage_${chosenStation.name.replace(/\s+/g,'_')}.wav`;
+      triggerDownload(blob, name);
+    }catch(e){ console.error(e); alert('Fehler beim Download: '+e.message); }
+    downloadBtn.disabled = false;
+  });
+
+  // helper to build file list (paths)
+  function assembleFilesForStation(gong, station, transfer){
+    const files = [];
+    // gong
+    files.push(`assets/audio/gongs/${gong}.mp3`);
+    // "Nächster Halt"
+    files.push('assets/audio/phrases/naechster_halt.mp3');
+    // station name
+    files.push(`assets/audio/stations/${station.audio}`);
+    // umstiege if any
+    if(transfer){
+      const key = transfer.toLowerCase().replace(/\s+/g,'_');
+      files.push(`assets/audio/transfers/transfer_${key}.mp3`);
+    }
+    return files;
+  }
+
+  // small html escape
+  function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+  </script>
+</body>
+</html>
