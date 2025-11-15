@@ -10,6 +10,7 @@ const SAMPLE_DATA = {
     {id:'marienplatz', name:'Marienplatz', audio:'marienplatz.mp3', types:['S-Bahn','U-Bahn']},
     {id:'sendlinger', name:'Sendlinger Tor', audio:'sendlinger_tor.mp3', types:['U-Bahn','Tram']},
     {id:'gabelsberger', name:'Gabelsbergerstr.', audio:'gabelsberger.mp3', types:['Bus']}
+    {id:'pasing', name:'Pasing Bf.', audio:'Pasing_Bf.mp3', types:['Bus','S-Bahn','Tram',]}
   ],
   // example lines structure: lines['U1'] = { routes: [ [stationId,...], [stationId,...] ] }
   lines: {
